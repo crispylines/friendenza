@@ -219,7 +219,8 @@ export async function discoverOwnedGenesis(
     const response = await fetcher(url, {
       headers: {
         accept: "application/json",
-        "user-agent": "Friendenza/1.0 (+https://friendenza.com)",
+        "user-agent":
+          "Mozilla/5.0 (compatible; Friendenza/1.0; +https://friendenza.com)",
       },
       next: { revalidate: 30 },
     } as RequestInit);

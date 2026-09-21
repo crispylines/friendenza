@@ -65,7 +65,8 @@ describe("Genesis ownership", () => {
     expect(requestInit).toMatchObject({
       headers: {
         accept: "application/json",
-        "user-agent": "Friendenza/1.0 (+https://friendenza.com)",
+        "user-agent":
+          "Mozilla/5.0 (compatible; Friendenza/1.0; +https://friendenza.com)",
       },
     });
   });
