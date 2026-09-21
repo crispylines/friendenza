@@ -121,7 +121,7 @@ constraints, metadata fallbacks, ownership verification, already-claimed
 protection, wallet challenge integrity, authorization and IPFS binding,
 responsive desktop/mobile journeys, duplicate claims, transferred-source
 ownership, expired and invalid signatures, front-running, signer rotation,
-and reentrancy. The latest application suite passes 33 tests; contract and
+and reentrancy. The latest application suite passes 34 tests; contract and
 mainnet-tooling suites also pass, and `npm audit` reports zero vulnerabilities.
 
 ## Known limitations and risks

@@ -11,7 +11,7 @@ import {
 import type { Hex } from "viem";
 import { ThemeToggle } from "./ThemeToggle";
 import { WalletButton } from "./WalletButton";
-import { generateFriendenza } from "@/lib/generative/friendenza";
+import { friendenzaDemoSvg } from "@/lib/generative/demo";
 import { targetChain } from "@/lib/web3/config";
 import {
   CLAIMS_CONFIGURED,
@@ -34,18 +34,6 @@ interface Preview {
   svgDigest: Hex;
   generatorVersion: string;
 }
-
-const demoSvg = generateFriendenza({
-  tokenId: BigInt(1024),
-  seed: 0xf13e4d2a,
-  version: "friendenza-v4",
-  traits: { Mood: "Rare", Form: "Pixel" },
-  tonalProfile: {
-    mean: 0.54,
-    contrast: 0.76,
-    histogram: [0.12, 0.09, 0.1, 0.14, 0.18, 0.15, 0.12, 0.1],
-  },
-}).svg;
 
 function svgDataUrl(svg: string) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -252,7 +240,10 @@ export function FriendenzaApp() {
           <div className="hero-art" aria-label="Example Friendenza pixel artwork">
             {/* Generated internally from trusted deterministic SVG. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={svgDataUrl(demoSvg)} alt="Example grayscale Friendenza flow field" />
+            <img
+              src={svgDataUrl(friendenzaDemoSvg)}
+              alt="Example grayscale Friendenza flow field"
+            />
             <span className="cross cross-one">+</span>
             <span className="cross cross-two">+</span>
           </div>

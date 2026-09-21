@@ -15,8 +15,40 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Friendenza",
-  description: "Generate and claim grayscale pixel art for your Rare Friends.",
+  metadataBase: new URL("https://friendenza.com"),
+  title: {
+    default: "Friendenza — Generative Art for Rare Friends",
+    template: "%s | Friendenza",
+  },
+  description:
+    "Turn an owned Rare Friends Genesis NFT into deterministic grayscale pixel-flow art, then claim it on Robinhood Chain.",
+  applicationName: "Friendenza",
+  creator: "@qrimeCapital",
+  category: "Generative art",
+  keywords: [
+    "Friendenza",
+    "Rare Friends",
+    "generative art",
+    "pixel art",
+    "NFT",
+    "Robinhood Chain",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Friendenza",
+    title: "Friendenza — Generative Art for Rare Friends",
+    description:
+      "Generate deterministic grayscale pixel-flow art from your Rare Friends Genesis NFT and claim it onchain.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Friendenza — Generative Art for Rare Friends",
+    description:
+      "Generate deterministic grayscale pixel-flow art from your Rare Friends Genesis NFT and claim it onchain.",
+    creator: "@qrimeCapital",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
