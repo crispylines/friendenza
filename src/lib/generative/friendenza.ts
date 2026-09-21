@@ -123,7 +123,7 @@ function chooseTone(
   return FRIENDENZA_GRAYSCALE[index];
 }
 
-export function generateFriendenza(input: FriendenzaInput): FriendenzaResult {
+function generatePixelClustersV1(input: FriendenzaInput): FriendenzaResult {
   const size = Math.max(128, Math.min(1024, Math.floor(input.size ?? 512)));
   const gridCells = 64;
   const cellSize = Math.max(2, Math.floor(size / gridCells));
@@ -188,4 +188,134 @@ export function generateFriendenza(input: FriendenzaInput): FriendenzaResult {
       tonalProfile,
     },
   };
+}
+
+function generateFlowRibbonsV2(input: FriendenzaInput): FriendenzaResult {
+  const size = Math.max(128, Math.min(1024, Math.floor(input.size ?? 512)));
+  const gridCells = 64;
+  const cellSize = Math.max(2, Math.floor(size / gridCells));
+  const canvasSize = cellSize * gridCells;
+  const traitsText = stableTraits(input.traits);
+  const traitsHash = hashString(traitsText);
+  const versionHash = hashString(input.version);
+  const tokenHash = Number(BigInt.asUintN(32, input.tokenId));
+  const mixedSeed = (input.seed ^ traitsHash ^ versionHash ^ tokenHash) >>> 0;
+  const random = new SeededRandom(mixedSeed);
+  const noise = createNoise(random, 18);
+  const tonalProfile = normalizeTonalProfile(input.tonalProfile);
+  const backgroundChoices = tonalProfile.mean >= 0.5 ? [6, 7, 7] : [0, 0, 1];
+  const backgroundIndex = backgroundChoices[random.int(0, backgroundChoices.length - 1)];
+  const lightBackground = backgroundIndex >= 4;
+  const orientation = traitsHash % 3;
+  const laneSpacing = random.int(4, 7);
+  const firstLane = orientation === 2 ? -18 : -5;
+  const lastLane = orientation === 2 ? 80 : 69;
+  const bandCount = Math.ceil((lastLane - firstLane) / laneSpacing);
+  const groups: string[] = [];
+
+  function transform(along: number, across: number): [number, number] {
+    if (orientation === 1) return [across, along];
+    if (orientation === 2) {
+      return [along, across + Math.round((along - gridCells / 2) * 0.34)];
+    }
+    return [along, across];
+  }
+
+  for (let band = 0; band < bandCount; band += 1) {
+    let center = firstLane + band * laneSpacing + random.int(-1, 1);
+    let drift = 0;
+    let bandWidth = random.int(2, 5);
+    let toneIndex = lightBackground ? random.int(0, 4) : random.int(3, 7);
+    let toneRemaining = random.int(8, 22);
+    let widthRemaining = random.int(9, 20);
+    let gapRemaining = 0;
+    let accentRemaining = 0;
+    const start = random.int(-7, 5);
+    const finish = random.int(58, 72);
+    const cells: string[] = [];
+
+    for (let along = start; along <= finish; along += 1) {
+      const field = noise((along + 12) / 7.5, (center + 24) / 7.5);
+      drift += (field - 0.5) * (0.28 + tonalProfile.contrast * 0.32);
+      drift += Math.sin((along + band * 5) / 13) * 0.025;
+      drift = Math.max(-0.9, Math.min(0.9, drift * 0.82));
+      center += drift;
+
+      widthRemaining -= 1;
+      if (widthRemaining <= 0) {
+        bandWidth = Math.max(1, Math.min(6, bandWidth + random.int(-1, 1)));
+        widthRemaining = random.int(7, 18);
+      }
+
+      toneRemaining -= 1;
+      if (toneRemaining <= 0) {
+        const nextTone = lightBackground ? random.int(0, 5) : random.int(2, 7);
+        toneIndex = Math.abs(nextTone - backgroundIndex) < 2
+          ? lightBackground
+            ? Math.max(0, nextTone - 2)
+            : Math.min(7, nextTone + 2)
+          : nextTone;
+        toneRemaining = random.int(5, 18);
+      }
+
+      if (gapRemaining > 0) {
+        gapRemaining -= 1;
+        continue;
+      }
+      if (random.next() < 0.028) {
+        gapRemaining = random.int(1, 4);
+        continue;
+      }
+
+      if (accentRemaining <= 0 && bandWidth >= 3 && random.next() < 0.07) {
+        accentRemaining = random.int(2, 8);
+      }
+
+      const top = Math.round(center - bandWidth / 2);
+      for (let offset = 0; offset < bandWidth; offset += 1) {
+        const [x, y] = transform(along, top + offset);
+        if (x < 0 || y < 0 || x >= gridCells || y >= gridCells) continue;
+        const isAccent = accentRemaining > 0 && offset === Math.floor(bandWidth / 2);
+        const accentIndex = lightBackground
+          ? Math.min(7, toneIndex + 3)
+          : Math.max(0, toneIndex - 3);
+        const fill = FRIENDENZA_GRAYSCALE[isAccent ? accentIndex : toneIndex];
+        cells.push(
+          `<rect x="${x * cellSize}" y="${y * cellSize}" width="${cellSize}" height="${cellSize}" fill="${fill}"/>`,
+        );
+      }
+      accentRemaining -= 1;
+    }
+
+    if (cells.length > 0) {
+      groups.push(`<g data-band="${band}">${cells.join("")}</g>`);
+    }
+  }
+
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasSize} ${canvasSize}" width="${canvasSize}" height="${canvasSize}" shape-rendering="crispEdges" data-composition="flow-ribbons">`,
+    `<rect x="0" y="0" width="${canvasSize}" height="${canvasSize}" fill="${FRIENDENZA_GRAYSCALE[backgroundIndex]}"/>`,
+    ...groups,
+    "</svg>",
+  ].join("");
+
+  return {
+    svg,
+    width: canvasSize,
+    height: canvasSize,
+    cellSize,
+    provenance: {
+      tokenId: input.tokenId.toString(),
+      generatorVersion: input.version,
+      seed: input.seed >>> 0,
+      traitsDigest: `fnv1a32:${traitsHash.toString(16).padStart(8, "0")}`,
+      tonalProfile,
+    },
+  };
+}
+
+export function generateFriendenza(input: FriendenzaInput): FriendenzaResult {
+  return input.version === "friendenza-v1"
+    ? generatePixelClustersV1(input)
+    : generateFlowRibbonsV2(input);
 }

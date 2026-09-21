@@ -37,7 +37,7 @@ interface Preview {
 const demoSvg = generateFriendenza({
   tokenId: BigInt(1024),
   seed: 0xf13e4d2a,
-  version: "friendenza-v1",
+  version: "friendenza-v2",
   traits: { Mood: "Rare", Form: "Pixel" },
   tonalProfile: {
     mean: 0.54,
@@ -304,7 +304,7 @@ export function FriendenzaApp() {
                 </div>
                 <div className="preview-meta">
                   <div>
-                    <p className="eyebrow">{preview?.generatorVersion ?? "friendenza-v1"}</p>
+                    <p className="eyebrow">{preview?.generatorVersion ?? "friendenza-v2"}</p>
                     <h3>{selectedToken ? `Friendenza #${selectedToken.tokenId}` : "select a friend"}</h3>
                   </div>
                   <dl>

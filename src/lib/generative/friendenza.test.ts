@@ -21,6 +21,11 @@ const baseInput: FriendenzaInput = {
   },
 };
 
+const ribbonInput: FriendenzaInput = {
+  ...baseInput,
+  version: "friendenza-v2",
+};
+
 describe("generateFriendenza", () => {
   it("renders identical SVG for identical versioned inputs", () => {
     expect(generateFriendenza(baseInput)).toEqual(generateFriendenza(baseInput));
@@ -75,5 +80,45 @@ describe("generateFriendenza", () => {
     expect(result.provenance.generatorVersion).toBe("friendenza-v1");
     expect(result.svg).not.toContain("<script");
     expect(result.svg).not.toContain("alert(1)");
+  });
+
+  it("preserves v1 while v2 renders long coherent flow ribbons", () => {
+    const legacy = generateFriendenza(baseInput);
+    const ribbons = generateFriendenza(ribbonInput);
+    const bands = [...ribbons.svg.matchAll(/<g data-band="\d+">(.+?)<\/g>/g)];
+    const longestBand = Math.max(
+      ...bands.map(([, content]) => [...content.matchAll(/<rect /g)].length),
+    );
+
+    expect(legacy.svg).not.toContain('data-composition="flow-ribbons"');
+    expect(ribbons.svg).toContain('data-composition="flow-ribbons"');
+    expect(ribbons.svg).not.toBe(legacy.svg);
+    expect(bands.length).toBeGreaterThanOrEqual(8);
+    expect(longestBand).toBeGreaterThan(80);
+    expect(ribbons.provenance.generatorVersion).toBe("friendenza-v2");
+  });
+
+  it("keeps v2 ribbons deterministic, grayscale, and grid-aligned", () => {
+    const first = generateFriendenza(ribbonInput);
+    const second = generateFriendenza(ribbonInput);
+    const palette = new Set<string>(FRIENDENZA_GRAYSCALE);
+    const fills = [...first.svg.matchAll(/fill="(#[0-9a-f]{6})"/gi)].map(
+      (match) => match[1].toLowerCase(),
+    );
+    const rects = [
+      ...first.svg.matchAll(
+        /<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/g,
+      ),
+    ];
+
+    expect(first).toEqual(second);
+    expect(fills.every((fill) => palette.has(fill))).toBe(true);
+    expect(rects.length).toBeGreaterThan(500);
+    for (const [, x, y, width, height] of rects) {
+      expect(Number(x) % first.cellSize).toBe(0);
+      expect(Number(y) % first.cellSize).toBe(0);
+      expect(Number(width) % first.cellSize).toBe(0);
+      expect(Number(height) % first.cellSize).toBe(0);
+    }
   });
 });
