@@ -266,8 +266,18 @@ export async function verifyGenesisOwnership(
   }
 }
 
-export function serializeGenesisToken(token: GenesisToken) {
-  return { ...token, tokenId: token.tokenId.toString() };
+export function serializeGenesisToken(
+  token: GenesisToken,
+  ipfsGateway = process.env.IPFS_GATEWAY_URL ?? "https://ipfs.io/ipfs/",
+) {
+  let imageUrl = token.imageUrl;
+  if (imageUrl?.startsWith("ipfs://")) {
+    const gateway = new URL(ipfsGateway);
+    if (!gateway.pathname.endsWith("/")) gateway.pathname += "/";
+    const imagePath = imageUrl.slice("ipfs://".length).replace(/^ipfs\//, "");
+    imageUrl = new URL(imagePath, gateway).toString();
+  }
+  return { ...token, imageUrl, tokenId: token.tokenId.toString() };
 }
 
 export type GenesisAddress = Address;

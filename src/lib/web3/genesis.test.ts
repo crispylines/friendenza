@@ -4,6 +4,7 @@ import {
   discoverOwnedGenesis,
   fetchGenesisTokenFromUri,
   genesisTokenFromDataUri,
+  serializeGenesisToken,
   verifyGenesisOwnership,
 } from "./genesis";
 
@@ -149,5 +150,22 @@ describe("Genesis ownership", () => {
     await expect(
       fetchGenesisTokenFromUri(77n, "http://127.0.0.1/metadata.json", vi.fn()),
     ).rejects.toThrow("Unsafe metadata URL");
+  });
+
+  it("serializes IPFS artwork through the browser-facing HTTPS gateway", () => {
+    expect(
+      serializeGenesisToken(
+        {
+          tokenId: 77n,
+          name: "Rare Friend #77",
+          imageUrl: "ipfs://bafy-friend/image.png",
+          traits: {},
+        },
+        "https://gateway.pinata.cloud/ipfs/",
+      ),
+    ).toMatchObject({
+      tokenId: "77",
+      imageUrl: "https://gateway.pinata.cloud/ipfs/bafy-friend/image.png",
+    });
   });
 });
