@@ -9,6 +9,7 @@ import {
   useWriteContract,
 } from "wagmi";
 import type { Hex } from "viem";
+import { ThemeToggle } from "./ThemeToggle";
 import { WalletButton } from "./WalletButton";
 import { generateFriendenza } from "@/lib/generative/friendenza";
 import { targetChain } from "@/lib/web3/config";
@@ -37,7 +38,7 @@ interface Preview {
 const demoSvg = generateFriendenza({
   tokenId: BigInt(1024),
   seed: 0xf13e4d2a,
-  version: "friendenza-v3",
+  version: "friendenza-v4",
   traits: { Mood: "Rare", Form: "Pixel" },
   tonalProfile: {
     mean: 0.54,
@@ -225,7 +226,10 @@ export function FriendenzaApp() {
             rare friends ↗
           </a>
         </nav>
-        <WalletButton />
+        <div className="topbar-actions">
+          <ThemeToggle />
+          <WalletButton />
+        </div>
       </header>
 
       <main id="top">

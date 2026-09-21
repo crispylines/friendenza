@@ -31,6 +31,11 @@ const diverseRibbonInput: FriendenzaInput = {
   version: "friendenza-v3",
 };
 
+const compositionInput: FriendenzaInput = {
+  ...baseInput,
+  version: "friendenza-v4",
+};
+
 describe("generateFriendenza", () => {
   it("renders identical SVG for identical versioned inputs", () => {
     expect(generateFriendenza(baseInput)).toEqual(generateFriendenza(baseInput));
@@ -148,5 +153,54 @@ describe("generateFriendenza", () => {
     expect(new Set(densities).size).toBeGreaterThanOrEqual(4);
     expect(samples.every(({ provenance }) => provenance.generatorVersion === "friendenza-v3"))
       .toBe(true);
+  });
+
+  it("gives v4 tokens multiple distinct flow-field families including curls", () => {
+    const samples = Array.from({ length: 64 }, (_, index) =>
+      generateFriendenza({
+        ...compositionInput,
+        tokenId: BigInt(index + 1),
+        seed: compositionInput.seed + index * 7919,
+      }),
+    );
+    const families = new Set(
+      samples.map(
+        ({ svg }) => svg.match(/data-family="([a-z-]+)"/)?.[1],
+      ),
+    );
+
+    expect(new Set(samples.map(({ svg }) => svg)).size).toBe(samples.length);
+    expect(families.size).toBeGreaterThanOrEqual(6);
+    expect(families).toContain("vortex");
+    expect(families).toContain("double-vortex");
+    expect(families).toContain("radial");
+    expect(families).toContain("waves");
+    expect(
+      Math.max(...samples.map(({ svg }) => Buffer.byteLength(svg, "utf8"))),
+    ).toBeLessThan(750_000);
+  });
+
+  it("keeps v4 compositions deterministic, grayscale, and pixel-aligned", () => {
+    const first = generateFriendenza(compositionInput);
+    const palette = new Set<string>(FRIENDENZA_GRAYSCALE);
+    const fills = [...first.svg.matchAll(/fill="(#[0-9a-f]{6})"/gi)].map(
+      (match) => match[1].toLowerCase(),
+    );
+    const rects = [
+      ...first.svg.matchAll(
+        /<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/g,
+      ),
+    ];
+
+    expect(first).toEqual(generateFriendenza(compositionInput));
+    expect(first.provenance.generatorVersion).toBe("friendenza-v4");
+    expect(fills.every((fill) => palette.has(fill))).toBe(true);
+    expect(rects.length).toBeGreaterThan(300);
+    for (const [, x, y, width, height] of rects) {
+      expect(Number(x) % first.cellSize).toBe(0);
+      expect(Number(y) % first.cellSize).toBe(0);
+      expect(Number(width) % first.cellSize).toBe(0);
+      expect(Number(height) % first.cellSize).toBe(0);
+    }
   });
 });

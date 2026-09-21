@@ -71,7 +71,7 @@ export async function prepareOwnedArtifact(address: string, tokenId: bigint) {
     chainId: targetChain.id,
     contract: GENESIS_CONTRACT,
     tokenId,
-    generatorVersion: "friendenza-v3",
+    generatorVersion: "friendenza-v4",
     name: token.name,
     traits: token.traits,
     sourceMetadata,

@@ -471,8 +471,270 @@ function generateFlowRibbonsV3(input: FriendenzaInput): FriendenzaResult {
   };
 }
 
+const V4_FAMILIES = [
+  "parallel",
+  "waves",
+  "vortex",
+  "double-vortex",
+  "radial",
+  "weave",
+  "meander",
+] as const;
+
+function generateFlowFamiliesV4(input: FriendenzaInput): FriendenzaResult {
+  const size = Math.max(128, Math.min(1024, Math.floor(input.size ?? 512)));
+  const gridCells = 64;
+  const cellSize = Math.max(2, Math.floor(size / gridCells));
+  const canvasSize = cellSize * gridCells;
+  const traitsText = stableTraits(input.traits);
+  const traitsHash = hashString(traitsText);
+  const versionHash = hashString(input.version);
+  const tokenHash = Number(BigInt.asUintN(32, input.tokenId));
+  const mixedSeed = (input.seed ^ traitsHash ^ versionHash ^ tokenHash) >>> 0;
+  const random = new SeededRandom(mixedSeed);
+  const tonalProfile = normalizeTonalProfile(input.tonalProfile);
+  const family = V4_FAMILIES[mixedSeed % V4_FAMILIES.length];
+  const baseAngle = random.next() * Math.PI * 2;
+  const noiseScale = 7 + random.next() * 13;
+  const noiseAmount = 0.18 + random.next() * 0.75;
+  const noise = createNoise(random, random.int(16, 30));
+  const pathCount = random.int(16, 31);
+  const wavePeriod = random.int(7, 19);
+  const waveAmplitude = 0.35 + random.next() * 0.85;
+  const spiralPitch = (random.next() - 0.5) * 0.72;
+  const center = {
+    x: random.int(23, 41),
+    y: random.int(23, 41),
+  };
+  const secondCenter = {
+    x: clamp(center.x + random.int(-24, 24), 10, 54),
+    y: clamp(center.y + random.int(-24, 24), 10, 54),
+  };
+  const backgroundPool = tonalProfile.mean >= 0.5 ? [7, 7, 6, 0] : [0, 0, 1, 7];
+  const backgroundIndex = backgroundPool[random.int(0, backgroundPool.length - 1)];
+  const lightBackground = backgroundIndex >= 4;
+  const pixels = new Map<
+    string,
+    { x: number; y: number; fill: (typeof FRIENDENZA_GRAYSCALE)[number] }
+  >();
+
+  function startPoint(path: number): { x: number; y: number } {
+    const ratio = (path + 0.5) / pathCount;
+    const radialAngle = ratio * Math.PI * 2 + random.next() * 0.35;
+    if (family === "vortex") {
+      const radius = 5 + ratio * 32;
+      return {
+        x: center.x + Math.cos(radialAngle) * radius,
+        y: center.y + Math.sin(radialAngle) * radius,
+      };
+    }
+    if (family === "double-vortex") {
+      const focus = path % 2 === 0 ? center : secondCenter;
+      const radius = random.int(5, 23);
+      return {
+        x: focus.x + Math.cos(radialAngle) * radius,
+        y: focus.y + Math.sin(radialAngle) * radius,
+      };
+    }
+    if (family === "radial") {
+      const radius = random.int(2, 9);
+      return {
+        x: center.x + Math.cos(radialAngle) * radius,
+        y: center.y + Math.sin(radialAngle) * radius,
+      };
+    }
+    if (family === "meander") {
+      return { x: random.int(4, 59), y: random.int(4, 59) };
+    }
+
+    const pathAngle =
+      family === "weave" && path % 2 === 1 ? baseAngle + Math.PI / 2 : baseAngle;
+    if (Math.abs(Math.cos(pathAngle)) >= Math.abs(Math.sin(pathAngle))) {
+      return {
+        x: Math.cos(pathAngle) >= 0 ? -3 : gridCells + 3,
+        y: ratio * gridCells + random.int(-3, 3),
+      };
+    }
+    return {
+      x: ratio * gridCells + random.int(-3, 3),
+      y: Math.sin(pathAngle) >= 0 ? -3 : gridCells + 3,
+    };
+  }
+
+  function vortexAngle(
+    x: number,
+    y: number,
+    focus: { x: number; y: number },
+    direction: number,
+  ) {
+    return (
+      Math.atan2(y - focus.y, x - focus.x) +
+      direction * Math.PI / 2 +
+      spiralPitch
+    );
+  }
+
+  function fieldAngle(x: number, y: number, path: number, step: number): number {
+    const fieldNoise = (noise(x / noiseScale, y / noiseScale) - 0.5) * noiseAmount;
+    if (family === "waves") {
+      const across =
+        -Math.sin(baseAngle) * x + Math.cos(baseAngle) * y;
+      return (
+        baseAngle +
+        Math.sin(across / wavePeriod + path * 0.37) * waveAmplitude +
+        fieldNoise
+      );
+    }
+    if (family === "vortex") {
+      return vortexAngle(x, y, center, 1) + fieldNoise;
+    }
+    if (family === "double-vortex") {
+      const firstDistance = Math.hypot(x - center.x, y - center.y);
+      const secondDistance = Math.hypot(
+        x - secondCenter.x,
+        y - secondCenter.y,
+      );
+      const focus = firstDistance <= secondDistance ? center : secondCenter;
+      const direction = focus === center ? 1 : -1;
+      return vortexAngle(x, y, focus, direction) + fieldNoise;
+    }
+    if (family === "radial") {
+      const radial = Math.atan2(y - center.y, x - center.x);
+      const distance = Math.hypot(x - center.x, y - center.y);
+      return radial + Math.sin(distance / wavePeriod + path) * 0.45 + fieldNoise;
+    }
+    if (family === "weave") {
+      const pathAngle = path % 2 === 0 ? baseAngle : baseAngle + Math.PI / 2;
+      return pathAngle + Math.sin(step / wavePeriod + path) * 0.22 + fieldNoise;
+    }
+    if (family === "meander") {
+      return (
+        baseAngle +
+        (noise(x / (noiseScale * 0.65), y / (noiseScale * 0.65)) - 0.5) *
+          Math.PI *
+          2.4 +
+        Math.sin(step / wavePeriod + path) * 0.4
+      );
+    }
+    return baseAngle + fieldNoise;
+  }
+
+  for (let path = 0; path < pathCount; path += 1) {
+    let { x, y } = startPoint(path);
+    let width = random.int(1, family === "vortex" ? 4 : 6);
+    let widthRemaining = random.int(8, 24);
+    let toneIndex = lightBackground ? random.int(0, 4) : random.int(3, 7);
+    let toneRemaining = random.int(7, 28);
+    let gapRemaining = 0;
+    let accentRemaining = 0;
+    const steps =
+      family === "vortex" || family === "double-vortex"
+        ? random.int(105, 185)
+        : random.int(75, 145);
+    for (let step = 0; step < steps; step += 1) {
+      const angle = fieldAngle(x, y, path, step);
+      const inside =
+        x >= 0 && y >= 0 && x < gridCells && y < gridCells;
+
+      widthRemaining -= 1;
+      if (widthRemaining <= 0) {
+        width = Math.max(1, Math.min(7, width + random.int(-1, 1)));
+        widthRemaining = random.int(7, 22);
+      }
+      toneRemaining -= 1;
+      if (toneRemaining <= 0) {
+        toneIndex = lightBackground ? random.int(0, 5) : random.int(2, 7);
+        if (Math.abs(toneIndex - backgroundIndex) < 2) {
+          toneIndex = lightBackground
+            ? Math.max(0, toneIndex - 2)
+            : Math.min(7, toneIndex + 2);
+        }
+        toneRemaining = random.int(6, 24);
+      }
+
+      if (inside && gapRemaining <= 0) {
+        if (accentRemaining <= 0 && width >= 3 && random.next() < 0.055) {
+          accentRemaining = random.int(3, 13);
+        }
+        const half = (width - 1) / 2;
+        for (let offset = 0; offset < width; offset += 1) {
+          const perpendicular = offset - half;
+          const pixelX = Math.round(x + Math.cos(angle + Math.PI / 2) * perpendicular);
+          const pixelY = Math.round(y + Math.sin(angle + Math.PI / 2) * perpendicular);
+          if (
+            pixelX < 0 ||
+            pixelY < 0 ||
+            pixelX >= gridCells ||
+            pixelY >= gridCells
+          ) {
+            continue;
+          }
+          const isAccent =
+            accentRemaining > 0 && offset === Math.floor(width / 2);
+          const accentIndex = lightBackground
+            ? Math.min(7, toneIndex + 3)
+            : Math.max(0, toneIndex - 3);
+          const fill = FRIENDENZA_GRAYSCALE[
+            isAccent ? accentIndex : toneIndex
+          ];
+          pixels.set(`${pixelX}:${pixelY}`, {
+            x: pixelX,
+            y: pixelY,
+            fill,
+          });
+        }
+        accentRemaining -= 1;
+        if (random.next() < 0.016 + tonalProfile.contrast * 0.018) {
+          gapRemaining = random.int(1, 5);
+        }
+      } else if (gapRemaining > 0) {
+        gapRemaining -= 1;
+      }
+
+      const speed = family === "meander" ? 0.72 : 0.84;
+      x += Math.cos(angle) * speed;
+      y += Math.sin(angle) * speed;
+      if (
+        x < -8 ||
+        y < -8 ||
+        x > gridCells + 8 ||
+        y > gridCells + 8
+      ) {
+        break;
+      }
+    }
+
+  }
+
+  const pixelRects = [...pixels.values()].map(
+    ({ x, y, fill }) =>
+      `<rect x="${x * cellSize}" y="${y * cellSize}" width="${cellSize}" height="${cellSize}" fill="${fill}"/>`,
+  );
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasSize} ${canvasSize}" width="${canvasSize}" height="${canvasSize}" shape-rendering="crispEdges" data-composition="flow-families-v4" data-family="${family}" data-density="${pathCount}">`,
+    `<rect x="0" y="0" width="${canvasSize}" height="${canvasSize}" fill="${FRIENDENZA_GRAYSCALE[backgroundIndex]}"/>`,
+    `<g data-band="pixels">${pixelRects.join("")}</g>`,
+    "</svg>",
+  ].join("");
+
+  return {
+    svg,
+    width: canvasSize,
+    height: canvasSize,
+    cellSize,
+    provenance: {
+      tokenId: input.tokenId.toString(),
+      generatorVersion: input.version,
+      seed: input.seed >>> 0,
+      traitsDigest: `fnv1a32:${traitsHash.toString(16).padStart(8, "0")}`,
+      tonalProfile,
+    },
+  };
+}
+
 export function generateFriendenza(input: FriendenzaInput): FriendenzaResult {
   if (input.version === "friendenza-v1") return generatePixelClustersV1(input);
   if (input.version === "friendenza-v2") return generateFlowRibbonsV2(input);
-  return generateFlowRibbonsV3(input);
+  if (input.version === "friendenza-v3") return generateFlowRibbonsV3(input);
+  return generateFlowFamiliesV4(input);
 }
