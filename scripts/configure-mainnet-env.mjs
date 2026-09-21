@@ -15,14 +15,36 @@ const localSource = await readFile(localEnvPath, "utf8").catch(() => "");
 const mainnetSource = await readFile(mainnetEnvPath, "utf8").catch(() => "");
 const localValues = parseEnv(localSource);
 const mainnetValues = parseEnv(mainnetSource);
+const useLocalDeployer = process.argv.includes("--use-local-deployer");
 
-const deployerKey =
-  mainnetValues.get("DEPLOYER_PRIVATE_KEY") ??
-  localValues.get("DEPLOYER_PRIVATE_KEY") ??
+const configuredDeployerKey =
+  (useLocalDeployer
+    ? localValues.get("DEPLOYER_PRIVATE_KEY")
+    : mainnetValues.get("DEPLOYER_PRIVATE_KEY") ??
+      localValues.get("DEPLOYER_PRIVATE_KEY")) ??
   "";
+const deployerKey = /^[0-9a-f]{64}$/i.test(configuredDeployerKey)
+  ? `0x${configuredDeployerKey}`
+  : configuredDeployerKey;
 if (!/^0x[0-9a-f]{64}$/i.test(deployerKey)) {
+  let localKeyProblem = "";
+  if (useLocalDeployer) {
+    if (!deployerKey) {
+      localKeyProblem = "DEPLOYER_PRIVATE_KEY was not found in .env.local";
+    } else if (/^['"]|['"]$/.test(deployerKey)) {
+      localKeyProblem = "DEPLOYER_PRIVATE_KEY must not be wrapped in quotes";
+    } else if (!deployerKey.startsWith("0x")) {
+      localKeyProblem = "DEPLOYER_PRIVATE_KEY must begin with 0x";
+    } else if (deployerKey.length !== 66) {
+      localKeyProblem = `DEPLOYER_PRIVATE_KEY has ${Math.max(0, deployerKey.length - 2)} characters after 0x; expected 64`;
+    } else {
+      localKeyProblem = "DEPLOYER_PRIVATE_KEY contains a non-hexadecimal character";
+    }
+  }
   throw new Error(
-    "DEPLOYER_PRIVATE_KEY is missing; add the funded owner wallet key to .env.local",
+    useLocalDeployer
+      ? localKeyProblem
+      : "DEPLOYER_PRIVATE_KEY is missing; add the funded owner wallet key to .env.local",
   );
 }
 

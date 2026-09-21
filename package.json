@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "test:mainnet-tooling": "node --test scripts/mainnet-config.test.mjs",
     "mainnet:configure": "node scripts/configure-mainnet-env.mjs",
+    "mainnet:rotate-deployer": "node scripts/configure-mainnet-env.mjs --use-local-deployer",
     "mainnet:dry-run": "node scripts/deploy-mainnet.mjs",
     "mainnet:deploy": "node scripts/deploy-mainnet.mjs --broadcast"
   },
