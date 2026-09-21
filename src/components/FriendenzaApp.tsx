@@ -37,7 +37,7 @@ interface Preview {
 const demoSvg = generateFriendenza({
   tokenId: BigInt(1024),
   seed: 0xf13e4d2a,
-  version: "friendenza-v2",
+  version: "friendenza-v3",
   traits: { Mood: "Rare", Form: "Pixel" },
   tonalProfile: {
     mean: 0.54,
@@ -71,6 +71,10 @@ export function FriendenzaApp() {
   const [claimStage, setClaimStage] = useState<ClaimStage>("idle");
   const [claimError, setClaimError] = useState<string>();
   const [transactionHash, setTransactionHash] = useState<Hex>();
+  const [generationRequest, setGenerationRequest] = useState<{
+    tokenId: string;
+    attempt: number;
+  }>();
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient({ chainId: targetChain.id });
@@ -79,14 +83,21 @@ export function FriendenzaApp() {
     () => tokensQuery.data?.find((token) => token.tokenId === effectiveSelectedId),
     [effectiveSelectedId, tokensQuery.data],
   );
+  const previewRequested = generationRequest?.tokenId === effectiveSelectedId;
   const previewQuery = useQuery({
-    queryKey: ["friendenza-preview", address, effectiveSelectedId],
-    enabled: Boolean(address && effectiveSelectedId),
+    queryKey: [
+      "friendenza-preview",
+      address,
+      effectiveSelectedId,
+      generationRequest?.attempt,
+    ],
+    enabled: Boolean(address && effectiveSelectedId && previewRequested),
     queryFn: async ({ signal }) => {
-      const response = await fetch(
-        `/api/preview/${address}/${effectiveSelectedId}`,
-        { signal },
-      );
+      const minimumGenerationTime = new Promise((resolve) => setTimeout(resolve, 1200));
+      const response = await fetch(`/api/preview/${address}/${effectiveSelectedId}`, {
+        signal,
+      });
+      await minimumGenerationTime;
       const payload = (await response.json()) as Preview & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Preview failed");
       return payload;
@@ -99,6 +110,18 @@ export function FriendenzaApp() {
 
   function selectToken(token: WalletGenesisToken) {
     setSelectedId(token.tokenId);
+    setGenerationRequest(undefined);
+    setClaimStage("idle");
+    setClaimError(undefined);
+    setTransactionHash(undefined);
+  }
+
+  function generateSelected() {
+    if (!effectiveSelectedId) return;
+    setGenerationRequest((current) => ({
+      tokenId: effectiveSelectedId,
+      attempt: (current?.attempt ?? 0) + 1,
+    }));
     setClaimStage("idle");
     setClaimError(undefined);
     setTransactionHash(undefined);
@@ -294,18 +317,40 @@ export function FriendenzaApp() {
               <article className="preview-panel">
                 <div className="preview-frame">
                   {previewLoading ? (
-                    <div className="preview-message scanlines">rendering flow field…</div>
+                    <div
+                      className="preview-message scanlines"
+                      role="status"
+                      aria-label="Generating Friendenza"
+                    >
+                      <div className="generation-progress">
+                        <span>mapping source tones</span>
+                        <strong>generating Friendenza…</strong>
+                        <i aria-hidden="true" />
+                      </div>
+                    </div>
                   ) : previewError ? (
                     <div className="preview-message">{previewError}</div>
                   ) : preview ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={svgDataUrl(preview.svg)} alt={`Friendenza for ${selectedToken?.name}`} />
-                  ) : null}
+                  ) : selectedToken?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={selectedToken.imageUrl}
+                      alt={`Source ${selectedToken.name}`}
+                    />
+                  ) : (
+                    <div className="preview-message">ready to generate</div>
+                  )}
                 </div>
                 <div className="preview-meta">
                   <div>
-                    <p className="eyebrow">{preview?.generatorVersion ?? "friendenza-v2"}</p>
-                    <h3>{selectedToken ? `Friendenza #${selectedToken.tokenId}` : "select a friend"}</h3>
+                    <p className="eyebrow">{preview?.generatorVersion ?? "source rare friend"}</p>
+                    <h3>
+                      {preview && selectedToken
+                        ? `Friendenza #${selectedToken.tokenId}`
+                        : selectedToken?.name ?? "select a friend"}
+                    </h3>
                   </div>
                   <dl>
                     <div>
@@ -337,20 +382,30 @@ export function FriendenzaApp() {
                     </div>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        className="pixel-button claim-button"
-                        disabled={
-                          !selectedToken ||
-                          !preview ||
-                          previewLoading ||
-                          !CLAIMS_CONFIGURED ||
-                          !["idle", "error"].includes(claimStage)
-                        }
-                        onClick={claimSelected}
-                      >
-                        {CLAIMS_CONFIGURED ? stageLabel(claimStage) : "claims opening soon"}
-                      </button>
+                      {preview && !previewError ? (
+                        <button
+                          type="button"
+                          className="pixel-button claim-button"
+                          disabled={
+                            !selectedToken ||
+                            previewLoading ||
+                            !CLAIMS_CONFIGURED ||
+                            !["idle", "error"].includes(claimStage)
+                          }
+                          onClick={claimSelected}
+                        >
+                          {CLAIMS_CONFIGURED ? stageLabel(claimStage) : "claims opening soon"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="pixel-button claim-button"
+                          disabled={!selectedToken || previewLoading}
+                          onClick={generateSelected}
+                        >
+                          {previewError ? "try generation again" : "generate friendenza"}
+                        </button>
+                      )}
                       {claimError ? <p className="form-error" role="alert">{claimError}</p> : null}
                     </>
                   )}

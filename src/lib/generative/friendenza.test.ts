@@ -26,6 +26,11 @@ const ribbonInput: FriendenzaInput = {
   version: "friendenza-v2",
 };
 
+const diverseRibbonInput: FriendenzaInput = {
+  ...baseInput,
+  version: "friendenza-v3",
+};
+
 describe("generateFriendenza", () => {
   it("renders identical SVG for identical versioned inputs", () => {
     expect(generateFriendenza(baseInput)).toEqual(generateFriendenza(baseInput));
@@ -120,5 +125,28 @@ describe("generateFriendenza", () => {
       expect(Number(width) % first.cellSize).toBe(0);
       expect(Number(height) % first.cellSize).toBe(0);
     }
+  });
+
+  it("gives v3 tokens varied directions, density, and composition", () => {
+    const samples = Array.from({ length: 24 }, (_, index) =>
+      generateFriendenza({
+        ...diverseRibbonInput,
+        tokenId: BigInt(index + 1),
+        seed: diverseRibbonInput.seed + index * 7919,
+      }),
+    );
+    const directions = samples.map(
+      ({ svg }) => svg.match(/data-direction="(\d+)"/)?.[1],
+    );
+    const densities = samples.map(
+      ({ svg }) => svg.match(/data-density="(\d+)"/)?.[1],
+    );
+
+    expect(samples[0].svg).toContain('data-composition="flow-ribbons-v3"');
+    expect(new Set(samples.map(({ svg }) => svg)).size).toBe(samples.length);
+    expect(new Set(directions).size).toBeGreaterThanOrEqual(6);
+    expect(new Set(densities).size).toBeGreaterThanOrEqual(4);
+    expect(samples.every(({ provenance }) => provenance.generatorVersion === "friendenza-v3"))
+      .toBe(true);
   });
 });

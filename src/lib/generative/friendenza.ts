@@ -314,8 +314,165 @@ function generateFlowRibbonsV2(input: FriendenzaInput): FriendenzaResult {
   };
 }
 
+function generateFlowRibbonsV3(input: FriendenzaInput): FriendenzaResult {
+  const size = Math.max(128, Math.min(1024, Math.floor(input.size ?? 512)));
+  const gridCells = 64;
+  const cellSize = Math.max(2, Math.floor(size / gridCells));
+  const canvasSize = cellSize * gridCells;
+  const traitsText = stableTraits(input.traits);
+  const traitsHash = hashString(traitsText);
+  const versionHash = hashString(input.version);
+  const tokenHash = Number(BigInt.asUintN(32, input.tokenId));
+  const mixedSeed = (input.seed ^ traitsHash ^ versionHash ^ tokenHash) >>> 0;
+  const random = new SeededRandom(mixedSeed);
+  const tonalProfile = normalizeTonalProfile(input.tonalProfile);
+  const direction = random.int(0, 7);
+  const density = random.int(3, 9);
+  const perspective = 0.18 + random.next() * 0.5;
+  const curvature = 0.16 + random.next() * 0.58;
+  const wavePeriod = random.int(8, 27);
+  const waveStrength = random.next() * 0.07;
+  const gapChance = 0.006 + random.next() * 0.034;
+  const noiseScale = 5.5 + random.next() * 7;
+  const noise = createNoise(random, random.int(14, 28));
+  const backgroundSets = tonalProfile.mean >= 0.5
+    ? [[7, 7, 6], [0, 1, 7]]
+    : [[0, 0, 1], [7, 6, 0]];
+  const backgroundSet = backgroundSets[random.int(0, backgroundSets.length - 1)];
+  const backgroundIndex = backgroundSet[random.int(0, backgroundSet.length - 1)];
+  const lightBackground = backgroundIndex >= 4;
+  const diagonal = direction >= 4;
+  const firstLane = diagonal ? -26 : -9;
+  const lastLane = diagonal ? 90 : 75;
+  const bandCount = Math.ceil((lastLane - firstLane) / density);
+  const groups: string[] = [];
+
+  function transform(along: number, across: number): [number, number] {
+    const offset = Math.round((along - gridCells / 2) * perspective);
+    switch (direction) {
+      case 1:
+        return [gridCells - 1 - along, across];
+      case 2:
+        return [across, along];
+      case 3:
+        return [across, gridCells - 1 - along];
+      case 4:
+        return [along, across + offset];
+      case 5:
+        return [along, across - offset];
+      case 6:
+        return [across + offset, along];
+      case 7:
+        return [across - offset, along];
+      default:
+        return [along, across];
+    }
+  }
+
+  for (let band = 0; band < bandCount; band += 1) {
+    let center = firstLane + band * density + random.int(-2, 2);
+    let drift = (random.next() - 0.5) * 0.18;
+    let bandWidth = random.int(1, 7);
+    let toneIndex = lightBackground ? random.int(0, 4) : random.int(3, 7);
+    let toneRemaining = random.int(5, 25);
+    let widthRemaining = random.int(6, 22);
+    let gapRemaining = 0;
+    let accentRemaining = 0;
+    const crossesCanvas = random.next() < 0.68;
+    const start = crossesCanvas ? random.int(-10, 2) : random.int(2, 20);
+    const finish = crossesCanvas ? random.int(62, 76) : random.int(40, 63);
+    const phase = random.next() * Math.PI * 2;
+    const bandCurvature = curvature * (0.7 + random.next() * 0.65);
+    const cells: string[] = [];
+
+    for (let along = start; along <= finish; along += 1) {
+      const field = noise(
+        (along + 16 + band * 0.7) / noiseScale,
+        (center + 28) / noiseScale,
+      );
+      const wave = Math.sin((along / wavePeriod) * Math.PI * 2 + phase) * waveStrength;
+      drift += (field - 0.5) * bandCurvature + wave;
+      drift = Math.max(-1.15, Math.min(1.15, drift * 0.8));
+      center += drift;
+
+      widthRemaining -= 1;
+      if (widthRemaining <= 0) {
+        bandWidth = Math.max(1, Math.min(8, bandWidth + random.int(-2, 2)));
+        widthRemaining = random.int(5, 20);
+      }
+
+      toneRemaining -= 1;
+      if (toneRemaining <= 0) {
+        const nextTone = lightBackground ? random.int(0, 5) : random.int(2, 7);
+        toneIndex = Math.abs(nextTone - backgroundIndex) < 2
+          ? lightBackground
+            ? Math.max(0, nextTone - random.int(2, 4))
+            : Math.min(7, nextTone + random.int(2, 4))
+          : nextTone;
+        toneRemaining = random.int(4, 22);
+      }
+
+      if (gapRemaining > 0) {
+        gapRemaining -= 1;
+        continue;
+      }
+      if (random.next() < gapChance) {
+        gapRemaining = random.int(1, 6);
+        continue;
+      }
+
+      if (accentRemaining <= 0 && bandWidth >= 3 && random.next() < 0.09) {
+        accentRemaining = random.int(1, 11);
+      }
+
+      const top = Math.round(center - bandWidth / 2);
+      for (let offset = 0; offset < bandWidth; offset += 1) {
+        const [x, y] = transform(along, top + offset);
+        if (x < 0 || y < 0 || x >= gridCells || y >= gridCells) continue;
+        const accentOffset = band % 2 === 0
+          ? Math.floor(bandWidth / 2)
+          : Math.max(0, bandWidth - 2);
+        const isAccent = accentRemaining > 0 && offset === accentOffset;
+        const accentIndex = lightBackground
+          ? Math.min(7, toneIndex + random.int(2, 4))
+          : Math.max(0, toneIndex - random.int(2, 4));
+        const fill = FRIENDENZA_GRAYSCALE[isAccent ? accentIndex : toneIndex];
+        cells.push(
+          `<rect x="${x * cellSize}" y="${y * cellSize}" width="${cellSize}" height="${cellSize}" fill="${fill}"/>`,
+        );
+      }
+      accentRemaining -= 1;
+    }
+
+    if (cells.length > 0) {
+      groups.push(`<g data-band="${band}">${cells.join("")}</g>`);
+    }
+  }
+
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasSize} ${canvasSize}" width="${canvasSize}" height="${canvasSize}" shape-rendering="crispEdges" data-composition="flow-ribbons-v3" data-direction="${direction}" data-density="${density}">`,
+    `<rect x="0" y="0" width="${canvasSize}" height="${canvasSize}" fill="${FRIENDENZA_GRAYSCALE[backgroundIndex]}"/>`,
+    ...groups,
+    "</svg>",
+  ].join("");
+
+  return {
+    svg,
+    width: canvasSize,
+    height: canvasSize,
+    cellSize,
+    provenance: {
+      tokenId: input.tokenId.toString(),
+      generatorVersion: input.version,
+      seed: input.seed >>> 0,
+      traitsDigest: `fnv1a32:${traitsHash.toString(16).padStart(8, "0")}`,
+      tonalProfile,
+    },
+  };
+}
+
 export function generateFriendenza(input: FriendenzaInput): FriendenzaResult {
-  return input.version === "friendenza-v1"
-    ? generatePixelClustersV1(input)
-    : generateFlowRibbonsV2(input);
+  if (input.version === "friendenza-v1") return generatePixelClustersV1(input);
+  if (input.version === "friendenza-v2") return generateFlowRibbonsV2(input);
+  return generateFlowRibbonsV3(input);
 }
