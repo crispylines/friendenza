@@ -74,9 +74,12 @@ if (genesisName !== "Rare Friends Genesis" || genesisSymbol !== "GENESIS") {
 }
 
 const broadcast = process.argv.includes("--broadcast");
+const broadcastConfirmation =
+  process.env.MAINNET_BROADCAST_CONFIRMATION ??
+  values.get("MAINNET_BROADCAST_CONFIRMATION");
 if (
   broadcast &&
-  values.get("MAINNET_BROADCAST_CONFIRMATION") !== BROADCAST_CONFIRMATION
+  broadcastConfirmation !== BROADCAST_CONFIRMATION
 ) {
   throw new Error(
     `Broadcast blocked: set MAINNET_BROADCAST_CONFIRMATION=${BROADCAST_CONFIRMATION}`,
@@ -168,11 +171,66 @@ const verification = spawnSync(
     maxBuffer: 20 * 1024 * 1024,
   },
 );
-if (verification.stdout) process.stdout.write(verification.stdout);
-if (verification.stderr) process.stderr.write(verification.stderr);
-if (verification.status !== 0) {
+if (verification.status === 0) {
+  if (verification.stdout) process.stdout.write(verification.stdout);
+  if (verification.stderr) process.stderr.write(verification.stderr);
+  console.log(`Verified Friendenza source at ${friendenza}`);
+  process.exit(0);
+}
+
+console.warn(
+  "Blockscout verification was unavailable; falling back to Sourcify.",
+);
+const broadcastRecord = JSON.parse(
+  await readFile(
+    path.join(
+      contractsRoot,
+      "broadcast",
+      "DeployFriendenza.s.sol",
+      String(MAINNET_CHAIN_ID),
+      "run-latest.json",
+    ),
+    "utf8",
+  ),
+);
+const deploymentTransaction = broadcastRecord.transactions?.find(
+  (transaction) =>
+    transaction.contractAddress &&
+    getAddress(transaction.contractAddress) === friendenza,
+);
+if (!deploymentTransaction?.hash) {
+  throw new Error("Deployment transaction hash was not found for verification");
+}
+const sourcify = spawnSync(
+  forge,
+  [
+    "verify-contract",
+    friendenza,
+    "src/Friendenza.sol:Friendenza",
+    "--chain-id",
+    String(MAINNET_CHAIN_ID),
+    "--compiler-version",
+    "0.8.24",
+    "--constructor-args",
+    constructorArgs,
+    "--creation-transaction-hash",
+    deploymentTransaction.hash,
+    "--verifier",
+    "sourcify",
+    "--watch",
+  ],
+  {
+    cwd: contractsRoot,
+    env: childEnvironment,
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+  },
+);
+if (sourcify.stdout) process.stdout.write(sourcify.stdout);
+if (sourcify.stderr) process.stderr.write(sourcify.stderr);
+if (sourcify.status !== 0) {
   throw new Error(
-    `Contract deployed at ${friendenza}, but Blockscout verification failed`,
+    `Contract deployed at ${friendenza}, but source verification failed`,
   );
 }
-console.log(`Verified Friendenza source at ${friendenza}`);
+console.log(`Verified Friendenza source through Sourcify at ${friendenza}`);
