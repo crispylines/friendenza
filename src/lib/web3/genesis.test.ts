@@ -11,7 +11,9 @@ const owner = "0x1111111111111111111111111111111111111111";
 
 describe("Genesis ownership", () => {
   it("filters Blockscout NFTs to the official Genesis contract and normalizes traits", async () => {
-    const fetcher = vi.fn(async () =>
+    const fetcher = vi.fn<
+      (input: string, init?: RequestInit) => Promise<Response>
+    >(async () =>
       new Response(
         JSON.stringify({
           items: [
@@ -56,6 +58,16 @@ describe("Genesis ownership", () => {
       },
     ]);
     expect(fetcher).toHaveBeenCalledOnce();
+    const [requestUrl, requestInit] = fetcher.mock.calls[0];
+    expect(requestUrl).toContain(
+      `/tokens/${GENESIS_CONTRACT}/instances?holder_address_hash=`,
+    );
+    expect(requestInit).toMatchObject({
+      headers: {
+        accept: "application/json",
+        "user-agent": "Friendenza/1.0 (+https://friendenza.com)",
+      },
+    });
   });
 
   it("rejects malformed addresses before making a network request", async () => {

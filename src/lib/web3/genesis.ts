@@ -209,12 +209,18 @@ export async function discoverOwnedGenesis(
   }
 
   const address = getAddress(walletAddress);
-  let url = `${blockscoutApiBase}/addresses/${address}/nft?type=ERC-721`;
+  const instancesUrl = `${blockscoutApiBase}/tokens/${GENESIS_CONTRACT}/instances`;
+  let url = `${instancesUrl}?${new URLSearchParams({
+    holder_address_hash: address,
+  })}`;
   const tokens = new Map<string, GenesisToken>();
 
   for (let page = 0; page < 20 && url; page += 1) {
     const response = await fetcher(url, {
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        "user-agent": "Friendenza/1.0 (+https://friendenza.com)",
+      },
       next: { revalidate: 30 },
     } as RequestInit);
     if (!response.ok) {
@@ -230,13 +236,13 @@ export async function discoverOwnedGenesis(
 
     const next = asRecord(payload?.next_page_params);
     if (!next || Object.keys(next).length === 0) break;
-    const params = new URLSearchParams({ type: "ERC-721" });
+    const params = new URLSearchParams({ holder_address_hash: address });
     for (const [key, value] of Object.entries(next)) {
       if (typeof value === "string" || typeof value === "number") {
         params.set(key, String(value));
       }
     }
-    url = `${blockscoutApiBase}/addresses/${address}/nft?${params}`;
+    url = `${instancesUrl}?${params}`;
   }
 
   return [...tokens.values()].sort((left, right) =>
