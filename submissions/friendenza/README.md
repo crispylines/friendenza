@@ -19,6 +19,27 @@ profile into a versioned seed. Friendenza V4 uses parallel ribbons, waves,
 curls, single and double vortices, radial fans, weaves, and meanders while
 keeping every composition pixel-aligned and limited to eight grayscale tones.
 
+## Where does the deterministic generation come from?
+
+Friendenza does not use fresh randomness when someone clicks generate. It
+sorts and canonicalizes the source metadata, including every trait name and
+value, then hashes that data together with the Robinhood chain ID, Genesis
+contract address, source token ID, and generator version. That produces the
+token's canonical seed.
+
+The generator separately hashes the sorted trait pairs and mixes that trait
+digest into its seeded random stream. Traits therefore help select and shape
+the composition family, direction, spacing, curvature, density, and other
+parameters. The source artwork is also sampled into an eight-bin grayscale
+histogram with mean and contrast values, so its tonal character influences the
+result.
+
+Because every random choice comes from those fixed inputs, the same Rare Friend
+and generator version always produce the same SVG. A different token, trait
+value, source image, or generator version changes the result. The canonical
+seed, source metadata digest, and final SVG digest are recorded in the claimed
+NFT metadata for verification.
+
 ## How does it use Rare Friends?
 
 The connected wallet must currently own a Rare Friends Genesis NFT on Robinhood
