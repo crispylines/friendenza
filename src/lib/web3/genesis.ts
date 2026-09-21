@@ -35,6 +35,7 @@ export interface GenesisToken {
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 type OwnerReader = (tokenId: bigint) => Promise<string>;
 const MAX_METADATA_BYTES = 1024 * 1024;
+const MAX_MARKETPLACE_HTML_BYTES = 4 * 1024 * 1024;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object"
@@ -198,6 +199,48 @@ export async function fetchGenesisTokenFromUri(
   const text = await response.text();
   if (Buffer.byteLength(text) > MAX_METADATA_BYTES) throw new Error("Metadata is too large");
   return tokenFromMetadata(tokenId, JSON.parse(text));
+}
+
+export async function fetchOpenSeaCachedImage(
+  tokenId: bigint,
+  fetcher: FetchLike = fetch,
+): Promise<string | null> {
+  const contract = GENESIS_CONTRACT.toLowerCase();
+  const itemUrl = `https://opensea.io/item/robinhood/${contract}/${tokenId}`;
+  const response = await fetcher(itemUrl, {
+    headers: {
+      accept: "text/html",
+      "user-agent":
+        "Mozilla/5.0 (compatible; Friendenza/1.0; +https://friendenza.com)",
+    },
+    next: { revalidate: 300 },
+    signal: AbortSignal.timeout(10_000),
+  } as RequestInit);
+  if (!response.ok) return null;
+
+  const declaredLength = Number(response.headers.get("content-length") ?? 0);
+  if (declaredLength > MAX_MARKETPLACE_HTML_BYTES) return null;
+  const html = await response.text();
+  if (Buffer.byteLength(html) > MAX_MARKETPLACE_HTML_BYTES) return null;
+
+  for (const match of html.matchAll(
+    /https:\/\/raw2\.seadn\.io\/[^"'\\<>\s]+/gi,
+  )) {
+    const candidate = match[0].replaceAll("&amp;", "&").replaceAll("\\u0026", "&");
+    try {
+      const parsed = new URL(candidate);
+      if (
+        parsed.protocol === "https:" &&
+        parsed.hostname === "raw2.seadn.io" &&
+        parsed.pathname.toLowerCase().startsWith(`/robinhood/${contract}/`)
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      // Ignore malformed marketplace data.
+    }
+  }
+  return null;
 }
 
 export async function discoverOwnedGenesis(

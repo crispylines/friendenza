@@ -4,6 +4,7 @@ import { targetChain, targetRpcUrl } from "@/lib/web3/config";
 import {
   discoverOwnedGenesis,
   fetchGenesisTokenFromUri,
+  fetchOpenSeaCachedImage,
   GENESIS_ABI,
   GENESIS_CONTRACT,
   serializeGenesisToken,
@@ -45,6 +46,15 @@ export async function GET(
             }),
           );
           if (!owned) return null;
+          try {
+            const cachedImageUrl = await fetchOpenSeaCachedImage(token.tokenId);
+            if (cachedImageUrl) return { ...token, imageUrl: cachedImageUrl };
+          } catch (error) {
+            console.warn("[genesis-discovery] OpenSea media fallback unavailable", {
+              tokenId: token.tokenId.toString(),
+              message: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
           if (token.imageUrl) return token;
           const tokenUri = await client.readContract({
             address: GENESIS_CONTRACT,

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GENESIS_CONTRACT,
   discoverOwnedGenesis,
+  fetchOpenSeaCachedImage,
   fetchGenesisTokenFromUri,
   genesisTokenFromDataUri,
   serializeGenesisToken,
@@ -167,5 +168,38 @@ describe("Genesis ownership", () => {
       tokenId: "77",
       imageUrl: "https://gateway.pinata.cloud/ipfs/bafy-friend/image.png",
     });
+  });
+
+  it("loads the intended cached Genesis artwork from the public OpenSea item", async () => {
+    const cachedImage =
+      "https://raw2.seadn.io/robinhood/0x116eaa62241751e0c98da43d458600c6c17cd361/art/image.svg";
+    const fetcher = vi.fn(async () =>
+      new Response(
+        `<html><script>self.__next_f.push(["${cachedImage}"])</script></html>`,
+        {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        },
+      ),
+    );
+
+    await expect(fetchOpenSeaCachedImage(250n, fetcher)).resolves.toBe(cachedImage);
+    expect(fetcher).toHaveBeenCalledWith(
+      `https://opensea.io/item/robinhood/${GENESIS_CONTRACT.toLowerCase()}/250`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ accept: "text/html" }),
+      }),
+    );
+  });
+
+  it("rejects unrelated media URLs from an OpenSea item response", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        '<html>https://raw2.seadn.io/ethereum/0xattacker/art/image.svg</html>',
+        { status: 200 },
+      ),
+    );
+
+    await expect(fetchOpenSeaCachedImage(250n, fetcher)).resolves.toBeNull();
   });
 });
