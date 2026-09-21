@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FriendenzaApp } from "./FriendenzaApp";
 import { targetChain } from "@/lib/web3/config";
 
@@ -36,6 +36,8 @@ vi.mock("@/hooks/useGenesisTokens", () => ({
 }));
 
 describe("FriendenzaApp", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     useAccount.mockReturnValue({
       address: undefined,
@@ -81,6 +83,7 @@ describe("FriendenzaApp", () => {
           name: "Test Rare Friend #42",
           imageUrl: "data:image/svg+xml,<svg/>",
           traits: { Eyes: "Pixel" },
+          claimed: false,
         },
       ],
       isLoading: false,
@@ -103,5 +106,46 @@ describe("FriendenzaApp", () => {
 
     expect(useQuery.mock.lastCall?.[0].enabled).toBe(true);
     expect(screen.getByRole("status", { name: /generating friendenza/i })).toBeInTheDocument();
+  });
+
+  it("shows claimed tokens and prevents another claim", () => {
+    useAccount.mockReturnValue({
+      address: "0x35f733b22A851307aE10D6Ba4689510e6Febdc4f",
+      chainId: targetChain.id,
+      isConnected: true,
+      isConnecting: false,
+    });
+    useGenesisTokens.mockReturnValue({
+      data: [
+        {
+          tokenId: "43",
+          name: "Test Rare Friend #43",
+          imageUrl: "data:image/svg+xml,<svg/>",
+          traits: { Eyes: "Pixel" },
+          claimed: true,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+    useQuery.mockImplementation((options: { enabled: boolean }) => ({
+      data: options.enabled
+        ? {
+            svg: "<svg/>",
+            svgDigest: `0x${"1".repeat(64)}`,
+            generatorVersion: "friendenza-v3",
+          }
+        : undefined,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    }));
+
+    render(<FriendenzaApp />);
+    expect(screen.getByText(/token #43 · claimed/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /generate friendenza/i }));
+
+    expect(screen.getByRole("button", { name: /already claimed/i })).toBeDisabled();
   });
 });

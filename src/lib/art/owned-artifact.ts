@@ -3,9 +3,9 @@ import { buildFriendenzaArtifact, extractTonalProfile } from "./pipeline";
 import { targetChain, targetRpcUrl } from "@/lib/web3/config";
 import {
   discoverOwnedGenesis,
+  fetchGenesisTokenFromUri,
   GENESIS_ABI,
   GENESIS_CONTRACT,
-  genesisTokenFromDataUri,
   verifyGenesisOwnership,
 } from "@/lib/web3/genesis";
 
@@ -14,23 +14,15 @@ export async function prepareOwnedArtifact(address: string, tokenId: bigint) {
     chain: targetChain,
     transport: http(targetRpcUrl),
   });
-  const tokens = await discoverOwnedGenesis(address);
-  let token = tokens.find((candidate) => candidate.tokenId === tokenId);
-  const configuredTestToken = process.env.NEXT_PUBLIC_TEST_TOKEN_ID;
-  if (
-    !token &&
-    targetChain.testnet &&
-    configuredTestToken === tokenId.toString()
-  ) {
-    const tokenUri = await client.readContract({
-      address: GENESIS_CONTRACT,
-      abi: GENESIS_ABI,
-      functionName: "tokenURI",
-      args: [tokenId],
+  const tokens = await discoverOwnedGenesis(address).catch((error) => {
+    console.warn("[owned-artifact] Indexer lookup failed; using on-chain metadata", {
+      address,
+      tokenId: tokenId.toString(),
+      message: error instanceof Error ? error.message : "Unknown error",
     });
-    token = genesisTokenFromDataUri(tokenId, tokenUri) ?? undefined;
-  }
-  if (!token) throw new Error("Rare Friend was not found in this wallet");
+    return [];
+  });
+  let token = tokens.find((candidate) => candidate.tokenId === tokenId);
   const owned = await verifyGenesisOwnership(address, tokenId, (id) =>
     client.readContract({
       address: GENESIS_CONTRACT,
@@ -40,6 +32,30 @@ export async function prepareOwnedArtifact(address: string, tokenId: bigint) {
     }),
   );
   if (!owned) throw new Error("Wallet no longer owns this Rare Friend");
+
+  if (!token?.imageUrl) {
+    const tokenUri = await client.readContract({
+      address: GENESIS_CONTRACT,
+      abi: GENESIS_ABI,
+      functionName: "tokenURI",
+      args: [tokenId],
+    });
+    const onChainToken = await fetchGenesisTokenFromUri(tokenId, tokenUri);
+    if (onChainToken) {
+      token = token
+        ? {
+            ...onChainToken,
+            ...token,
+            imageUrl: token.imageUrl ?? onChainToken.imageUrl,
+            traits:
+              Object.keys(token.traits).length > 0
+                ? token.traits
+                : onChainToken.traits,
+          }
+        : onChainToken;
+    }
+  }
+  if (!token) throw new Error("Rare Friend was not found in this wallet");
   if (!token.imageUrl) throw new Error("Rare Friend image is unavailable");
 
   const sourceMetadata = {

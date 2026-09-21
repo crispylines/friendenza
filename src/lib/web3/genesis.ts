@@ -34,6 +34,7 @@ export interface GenesisToken {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 type OwnerReader = (tokenId: bigint) => Promise<string>;
+const MAX_METADATA_BYTES = 1024 * 1024;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object"
@@ -71,6 +72,21 @@ function normalizeTraits(value: unknown): Record<string, string | number> {
       return [[key.slice(0, 80), typeof traitValue === "string" ? traitValue.slice(0, 160) : traitValue]];
     }),
   );
+}
+
+function tokenFromMetadata(tokenId: bigint, value: unknown): GenesisToken | null {
+  const metadata = asRecord(value);
+  if (!metadata) return null;
+  const metadataName = metadata.name;
+  return {
+    tokenId,
+    name:
+      typeof metadataName === "string" && metadataName.trim()
+        ? metadataName.slice(0, 160)
+        : `Rare Friend #${tokenId}`,
+    imageUrl: safeImageUrl(metadata.image),
+    traits: normalizeTraits(metadata.attributes),
+  };
 }
 
 function normalizeItem(value: unknown): GenesisToken | null {
@@ -116,21 +132,72 @@ export function genesisTokenFromDataUri(
     const json = header.includes(";base64")
       ? Buffer.from(encoded, "base64").toString("utf8")
       : decodeURIComponent(encoded);
-    const metadata = asRecord(JSON.parse(json));
-    if (!metadata) return null;
-    const metadataName = metadata.name;
-    return {
-      tokenId,
-      name:
-        typeof metadataName === "string" && metadataName.trim()
-          ? metadataName.slice(0, 160)
-          : `Rare Friend #${tokenId}`,
-      imageUrl: safeImageUrl(metadata.image),
-      traits: normalizeTraits(metadata.attributes),
-    };
+    return tokenFromMetadata(tokenId, JSON.parse(json));
   } catch {
     return null;
   }
+}
+
+function isPrivateMetadataHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  if (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized.endsWith(".local") ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.")
+  ) {
+    return true;
+  }
+  const match = normalized.match(/^172\.(\d{1,3})\./);
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
+}
+
+export async function fetchGenesisTokenFromUri(
+  tokenId: bigint,
+  tokenUri: string,
+  fetcher: FetchLike = fetch,
+  ipfsGateway = process.env.IPFS_GATEWAY_URL ?? "https://ipfs.io/ipfs/",
+): Promise<GenesisToken | null> {
+  if (tokenUri.startsWith("data:application/json")) {
+    return genesisTokenFromDataUri(tokenId, tokenUri);
+  }
+
+  let resolved = tokenUri;
+  if (tokenUri.startsWith("ipfs://")) {
+    const gateway = new URL(ipfsGateway);
+    if (gateway.protocol !== "https:" || isPrivateMetadataHostname(gateway.hostname)) {
+      throw new Error("Unsafe metadata URL");
+    }
+    if (!gateway.pathname.endsWith("/")) gateway.pathname += "/";
+    resolved = new URL(tokenUri.slice("ipfs://".length), gateway).toString();
+  }
+
+  const parsed = new URL(resolved);
+  if (parsed.protocol !== "https:" || isPrivateMetadataHostname(parsed.hostname)) {
+    throw new Error("Unsafe metadata URL");
+  }
+  const response = await fetcher(parsed.toString(), {
+    headers: { accept: "application/json" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`Metadata request failed (${response.status})`);
+  if (response.url) {
+    const finalUrl = new URL(response.url);
+    if (
+      finalUrl.protocol !== "https:" ||
+      isPrivateMetadataHostname(finalUrl.hostname)
+    ) {
+      throw new Error("Unsafe metadata redirect");
+    }
+  }
+  const declaredLength = Number(response.headers.get("content-length") ?? 0);
+  if (declaredLength > MAX_METADATA_BYTES) throw new Error("Metadata is too large");
+  const text = await response.text();
+  if (Buffer.byteLength(text) > MAX_METADATA_BYTES) throw new Error("Metadata is too large");
+  return tokenFromMetadata(tokenId, JSON.parse(text));
 }
 
 export async function discoverOwnedGenesis(

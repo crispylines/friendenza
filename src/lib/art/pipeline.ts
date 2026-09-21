@@ -33,6 +33,7 @@ export interface ArtifactInput {
   traits: Record<string, string | number>;
   sourceMetadata: unknown;
   tonalProfile: TonalProfile;
+  siteUrl?: string;
 }
 
 export interface FriendenzaArtifact extends FriendenzaResult {
@@ -145,11 +146,18 @@ function decodeDataImage(url: string): Buffer {
 async function loadImageBytes(
   sourceUrl: string,
   fetcher: typeof fetch,
+  ipfsGateway = process.env.IPFS_GATEWAY_URL ?? "https://ipfs.io/ipfs/",
 ): Promise<Buffer> {
   if (sourceUrl.startsWith("data:image/")) return decodeDataImage(sourceUrl);
-  const resolved = sourceUrl.startsWith("ipfs://")
-    ? `https://ipfs.io/ipfs/${sourceUrl.slice("ipfs://".length)}`
-    : sourceUrl;
+  let resolved = sourceUrl;
+  if (sourceUrl.startsWith("ipfs://")) {
+    const gateway = new URL(ipfsGateway);
+    if (gateway.protocol !== "https:" || isPrivateHostname(gateway.hostname)) {
+      throw new Error("Unsafe IPFS gateway URL");
+    }
+    if (!gateway.pathname.endsWith("/")) gateway.pathname += "/";
+    resolved = new URL(sourceUrl.slice("ipfs://".length), gateway).toString();
+  }
   const parsed = new URL(resolved);
   if (!["https:", "http:"].includes(parsed.protocol) || isPrivateHostname(parsed.hostname)) {
     throw new Error("Unsafe source image URL");
@@ -175,8 +183,9 @@ async function loadImageBytes(
 export async function extractTonalProfile(
   sourceUrl: string,
   fetcher: typeof fetch = fetch,
+  ipfsGateway?: string,
 ): Promise<TonalProfile> {
-  const buffer = await loadImageBytes(sourceUrl, fetcher);
+  const buffer = await loadImageBytes(sourceUrl, fetcher, ipfsGateway);
   const pixels = await sharp(buffer, { limitInputPixels: 16_777_216 })
     .flatten({ background: "#ffffff" })
     .greyscale()
@@ -214,11 +223,19 @@ export function buildFriendenzaArtifact(input: ArtifactInput): FriendenzaArtifac
     tonalProfile: input.tonalProfile,
   });
   const svgDigest = keccak256(stringToHex(generated.svg));
+  const configuredSite = new URL(
+    input.siteUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? "https://friendenza.com",
+  );
+  if (configuredSite.protocol !== "https:" || configuredSite.username || configuredSite.password) {
+    throw new Error("Invalid Friendenza site URL");
+  }
+  const externalUrl = new URL("/", configuredSite);
+  externalUrl.searchParams.set("friend", input.tokenId.toString());
   const metadata = {
     name: `Friendenza #${input.tokenId}`,
     description: `Deterministic grayscale pixel art generated for ${input.name}.`,
     image: `friendenza:${svgDigest}`,
-    external_url: `https://friendenza.xyz/friend/${input.tokenId}`,
+    external_url: externalUrl.toString(),
     attributes: [
       { trait_type: "Source Rare Friend", value: input.tokenId.toString() },
       { trait_type: "Generator", value: input.generatorVersion },

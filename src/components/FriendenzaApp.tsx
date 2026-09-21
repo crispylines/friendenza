@@ -128,7 +128,15 @@ export function FriendenzaApp() {
   }
 
   async function claimSelected() {
-    if (!address || !selectedToken || !publicClient || !CLAIMS_CONFIGURED) return;
+    if (
+      !address ||
+      !selectedToken ||
+      selectedToken.claimed ||
+      !publicClient ||
+      !CLAIMS_CONFIGURED
+    ) {
+      return;
+    }
     setClaimError(undefined);
     setTransactionHash(undefined);
 
@@ -307,7 +315,10 @@ export function FriendenzaApp() {
                     </span>
                     <span>
                       <strong>{token.name}</strong>
-                      <small>token #{token.tokenId}</small>
+                      <small>
+                        token #{token.tokenId}
+                        {token.claimed ? " · claimed" : ""}
+                      </small>
                     </span>
                     <b>→</b>
                   </button>
@@ -388,13 +399,18 @@ export function FriendenzaApp() {
                           className="pixel-button claim-button"
                           disabled={
                             !selectedToken ||
+                            selectedToken.claimed ||
                             previewLoading ||
                             !CLAIMS_CONFIGURED ||
                             !["idle", "error"].includes(claimStage)
                           }
                           onClick={claimSelected}
                         >
-                          {CLAIMS_CONFIGURED ? stageLabel(claimStage) : "claims opening soon"}
+                          {selectedToken?.claimed
+                            ? "already claimed"
+                            : CLAIMS_CONFIGURED
+                              ? stageLabel(claimStage)
+                              : "claims opening soon"}
                         </button>
                       ) : (
                         <button

@@ -7,6 +7,7 @@ export interface WalletGenesisToken {
   name: string;
   imageUrl: string | null;
   traits: Record<string, string | number>;
+  claimed: boolean;
 }
 
 async function loadGenesisTokens(address: string): Promise<WalletGenesisToken[]> {

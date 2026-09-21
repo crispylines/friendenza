@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GENESIS_CONTRACT,
   discoverOwnedGenesis,
+  fetchGenesisTokenFromUri,
   genesisTokenFromDataUri,
   verifyGenesisOwnership,
 } from "./genesis";
@@ -95,5 +96,45 @@ describe("Genesis ownership", () => {
       imageUrl: metadata.image,
       traits: { Eyes: "Pixel" },
     });
+  });
+
+  it("loads IPFS on-chain metadata when the indexer omits artwork", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          name: "Rare Friend #77",
+          image: "ipfs://bafy-friend-image",
+          attributes: [
+            { trait_type: "Body", value: "Robot" },
+            { trait_type: "Level", value: 7 },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      fetchGenesisTokenFromUri(
+        77n,
+        "ipfs://bafy-friend-metadata",
+        fetcher,
+        "https://gateway.pinata.cloud/ipfs/",
+      ),
+    ).resolves.toEqual({
+      tokenId: 77n,
+      name: "Rare Friend #77",
+      imageUrl: "ipfs://bafy-friend-image",
+      traits: { Body: "Robot", Level: 7 },
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://gateway.pinata.cloud/ipfs/bafy-friend-metadata",
+      expect.any(Object),
+    );
+  });
+
+  it("rejects unsafe on-chain metadata URLs", async () => {
+    await expect(
+      fetchGenesisTokenFromUri(77n, "http://127.0.0.1/metadata.json", vi.fn()),
+    ).rejects.toThrow("Unsafe metadata URL");
   });
 });

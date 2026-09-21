@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:mainnet-tooling": "node --test scripts/mainnet-config.test.mjs",
+    "mainnet:configure": "node scripts/configure-mainnet-env.mjs",
+    "mainnet:dry-run": "node scripts/deploy-mainnet.mjs",
+    "mainnet:deploy": "node scripts/deploy-mainnet.mjs --broadcast"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",

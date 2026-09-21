@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { isAddress } from "viem";
 import { prepareOwnedArtifact } from "@/lib/art/owned-artifact";
 
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ address: string; tokenId: string }> },

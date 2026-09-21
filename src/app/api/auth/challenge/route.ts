@@ -3,6 +3,9 @@ import { z } from "zod";
 import { createChallenge } from "@/lib/claim/challenge";
 import { targetChain } from "@/lib/web3/config";
 
+export const runtime = "nodejs";
+export const maxDuration = 10;
+
 const requestSchema = z.object({
   address: z.string(),
 });

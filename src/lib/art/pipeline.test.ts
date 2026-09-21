@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GENESIS_CONTRACT } from "@/lib/web3/genesis";
 import {
   buildFriendenzaArtifact,
@@ -72,6 +72,36 @@ describe("canonical Friendenza art pipeline", () => {
     expect(profile.histogram.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 5);
   });
 
+  it("uses the configured IPFS gateway for source artwork", async () => {
+    const png = await sharp({
+      create: {
+        width: 1,
+        height: 1,
+        channels: 3,
+        background: "#777777",
+      },
+    })
+      .png()
+      .toBuffer();
+    const fetcher = vi.fn(async () =>
+      new Response(png, {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+
+    await extractTonalProfile(
+      "ipfs://bafy-source-image",
+      fetcher as typeof fetch,
+      "https://gateway.pinata.cloud/ipfs/",
+    );
+
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL("https://gateway.pinata.cloud/ipfs/bafy-source-image"),
+      expect.any(Object),
+    );
+  });
+
   it("builds reproducible SVG and provenance hashes", () => {
     const input = {
       chainId: 4663,
@@ -99,5 +129,6 @@ describe("canonical Friendenza art pipeline", () => {
       trait_type: "Source Rare Friend",
       value: "42",
     });
+    expect(first.metadata.external_url).toBe("https://friendenza.com/?friend=42");
   });
 });
